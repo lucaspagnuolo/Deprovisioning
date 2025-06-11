@@ -81,8 +81,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
-    if not sam_lower.endswith(".ext"):
-        lines.append("   - O365 VivaEngage")
     utenti_groups = [g for g in grp if g.lower().startswith("o365 utenti")]
     if utenti_groups:
         for g in utenti_groups:
