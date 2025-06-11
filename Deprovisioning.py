@@ -115,18 +115,18 @@ def main():
     sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
     st.markdown("---")
 
-    # Generazione automatica nome CSV: Deprovisioning_{Cognome}_{InizialeNome}.csv
+    # Generazione automatica nome CSV
     if sam:
         clean = sam.replace(".ext", "")
         parts = clean.split('.')
         if len(parts) == 2:
             nome, cognome = parts
+            cognome_fmt = cognome.capitalize()
+            iniziale_nome = nome[0].upper() if nome else ''
+            csv_name = f"Deprovisioning_{cognome_fmt}_{iniziale_nome}.csv"
         else:
-            nome = clean
-            cognome = clean
-        cognome_fmt = cognome.capitalize()
-        iniziale_nome = nome[0].upper() if nome else ''
-        csv_name = f"Deprovisioning_{cognome_fmt}_{iniziale_nome}.csv"
+            # formato senza punto: nomecognome
+            csv_name = f"Deprovisioning_{clean}.csv"
     else:
         csv_name = "Deprovisioning_.csv"
     st.write(f"**File CSV generato:** {csv_name}")
