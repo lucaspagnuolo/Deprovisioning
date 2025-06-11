@@ -1,4 +1,3 @@
-# app_deprovisioning.py
 import streamlit as st
 import pandas as pd
 import csv
@@ -29,7 +28,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
         return ""
     joined = ";".join(base_groups)
     if any(" " in g for g in base_groups):
-        return f"\\\"{joined}\\\""
+        return f"\"{joined}\""
     return joined
 
 # Funzione testuale di deprovisioning (Step 2)
@@ -48,6 +47,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     if not mg_df.empty and mg_df.shape[1] > 3:
         mask = mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower
         grp = mg_df.loc[mask, mg_df.columns[0]].dropna().tolist()
+
     lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
@@ -69,8 +69,10 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         step += 1
     else:
         warnings.append("⚠️ Non sono state trovate DL all'utente indicato")
+
     lines.append(f"{step}. Disabilitare l’account di Azure")
     step += 1
+
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
         for sm in sm_list:
@@ -78,6 +80,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         step += 1
     else:
         warnings.append("⚠️ Non sono state trovate SM profilate all'utente indicato")
+
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
@@ -88,6 +91,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     else:
         warnings.append("⚠️ Non è stato trovato nessun gruppo O365 Utenti per l'utente")
     step += 1
+
     final = [
         "Disabilitazione utenza di dominio",
         "Spostamento in dismessi/utenti",
@@ -113,16 +117,13 @@ def main():
 
     # Generazione automatica nome CSV: Deprovisioning_{Cognome}_{InizialeNome}.csv
     if sam:
-        # Rimuove il suffisso .ext e split nome.cognome
         clean = sam.replace(".ext", "")
         parts = clean.split('.')
         if len(parts) == 2:
             nome, cognome = parts
         else:
-            # fallback se non c'è il punto
             nome = clean
             cognome = clean
-        # Formatta: cognome con iniziale maiuscola e iniziale nome maiuscola
         cognome_fmt = cognome.capitalize()
         iniziale_nome = nome[0].upper() if nome else ''
         csv_name = f"Deprovisioning_{cognome_fmt}_{iniziale_nome}.csv"
@@ -146,7 +147,13 @@ def main():
 
         # Step 1: genera CSV
         rimozione = estrai_rimozione_gruppi(sam, mg_df)
-        row = [sam] + ["" if i != HEADER_MODIFICA.index("RimozioneGruppo") else rimozione for i in range(len(HEADER_MODIFICA))]
+        row = [
+            sam if i == HEADER_MODIFICA.index("sAMAccountName") else
+            rimozione if i == HEADER_MODIFICA.index("RimozioneGruppo") else
+            ""
+            for i in range(len(HEADER_MODIFICA))
+        ]
+
         buf = io.StringIO()
         writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
         writer.writerow(HEADER_MODIFICA)
@@ -169,6 +176,7 @@ def main():
         # Step 2: testo di deprovisioning
         steps = genera_deprovisioning(sam, dl_df, sm_df, mg_df)
         st.text("\n".join(steps))
+
 
 if __name__ == "__main__":
     main()
