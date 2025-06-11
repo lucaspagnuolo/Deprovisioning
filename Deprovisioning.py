@@ -32,7 +32,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
         return f"\\\"{joined}\\\""
     return joined
 
-# Funzione testuale di deprovisioning (Step 2)
+# Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
     dl_list = []
@@ -81,6 +81,8 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
+    if not sam_lower.endswith(".ext"):
+        lines.append("   - O365 VivaEngage")
     utenti_groups = [g for g in grp if g.lower().startswith("o365 utenti")]
     if utenti_groups:
         for g in utenti_groups:
@@ -107,15 +109,25 @@ def main():
     st.set_page_config(page_title="Deprovisioning Consip", layout="centered")
     st.title("Deprovisioning Utente")
 
+    # Input sAMAccountName
     sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
-    csv_name = st.text_input("Nome file CSV (Step 1)", "deprovisioning_step1.csv")
     st.markdown("---")
 
+    # Generazione automatica nome CSV: Deprovisioning_{cognome}.csv
+    if sam:
+        parts = sam.replace(".ext", "").split('.')
+        cognome = parts[-1] if len(parts) > 1 else sam
+        csv_name = f"Deprovisioning_{cognome}.csv"
+    else:
+        csv_name = "Deprovisioning_.csv"
+    st.write(f"**File CSV generato:** {csv_name}")
+
+    # File uploader
     dl_file = st.file_uploader("Carica file DL (Excel)", type="xlsx")
     sm_file = st.file_uploader("Carica file SM (Excel)", type="xlsx")
     mg_file = st.file_uploader("Carica file Estr_MembriGruppi (Excel)", type="xlsx")
 
-    if st.button("Genera Template Ticket e CSV per Deprovisioning"):
+    if st.button("Genera Template e CSV per Deprovisioning"):
         if not sam:
             st.error("Inserisci lo sAMAccountName")
             return
@@ -126,8 +138,7 @@ def main():
 
         # Step 1: genera CSV
         rimozione = estrai_rimozione_gruppi(sam, mg_df)
-        row = [sam] + [""]*(len(HEADER_MODIFICA)-1)
-        row[HEADER_MODIFICA.index("RimozioneGruppo")] = rimozione
+        row = [sam] + ["" if i != HEADER_MODIFICA.index("RimozioneGruppo") else rimozione for i in range(len(HEADER_MODIFICA))]
         buf = io.StringIO()
         writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
         writer.writerow(HEADER_MODIFICA)
@@ -141,7 +152,7 @@ def main():
 
         # Download
         st.download_button(
-            label="📥 Scarica CSV Step 1",
+            label="📥 Scarica CSV",
             data=buf.getvalue(),
             file_name=csv_name,
             mime="text/csv"
