@@ -81,8 +81,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
-    if not sam_lower.endswith(".ext"):
-        lines.append("   - O365 VivaEngage")
     utenti_groups = [g for g in grp if g.lower().startswith("o365 utenti")]
     if utenti_groups:
         for g in utenti_groups:
@@ -117,7 +115,7 @@ def main():
     sm_file = st.file_uploader("Carica file SM (Excel)", type="xlsx")
     mg_file = st.file_uploader("Carica file Estr_MembriGruppi (Excel)", type="xlsx")
 
-    if st.button("Genera Deprovisioning e CSV Step 1"):
+    if st.button("Genera Template Ticket e CSV per Deprovisioning"):
         if not sam:
             st.error("Inserisci lo sAMAccountName")
             return
@@ -138,7 +136,7 @@ def main():
 
         # Anteprima CSV
         preview_df = pd.read_csv(io.StringIO(buf.getvalue()), sep=",")
-        st.subheader("Anteprima CSV Step 1")
+        st.subheader("Anteprima CSV")
         st.dataframe(preview_df)
 
         # Download
