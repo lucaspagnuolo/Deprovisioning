@@ -111,11 +111,21 @@ def main():
     sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
     st.markdown("---")
 
-    # Generazione automatica nome CSV: Deprovisioning_{cognome}.csv
+    # Generazione automatica nome CSV: Deprovisioning_{Cognome}_{InizialeNome}.csv
     if sam:
-        parts = sam.replace(".ext", "").split('.')
-        cognome = parts[-1] if len(parts) > 1 else sam
-        csv_name = f"Deprovisioning_{cognome}.csv"
+        # Rimuove il suffisso .ext e split nome.cognome
+        clean = sam.replace(".ext", "")
+        parts = clean.split('.')
+        if len(parts) == 2:
+            nome, cognome = parts
+        else:
+            # fallback se non c'è il punto
+            nome = clean
+            cognome = clean
+        # Formatta: cognome con iniziale maiuscola e iniziale nome maiuscola
+        cognome_fmt = cognome.capitalize()
+        iniziale_nome = nome[0].upper() if nome else ''
+        csv_name = f"Deprovisioning_{cognome_fmt}_{iniziale_nome}.csv"
     else:
         csv_name = "Deprovisioning_.csv"
     st.write(f"**File CSV generato:** {csv_name}")
