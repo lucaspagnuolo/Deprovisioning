@@ -75,7 +75,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         "Disabilitare invio ad utente (Message Delivery Restrictions)",
         "Impostare Hide dalla Rubrica",
         "Disabilitare accesso Mailbox (Mailbox features – Disable Protocolli/OWA)",
-        f"Estrarre il PST (O365 eDiscovery) da archiviare in \\nasconsip2....\backuppst\03 - backup email cancellate{sam_lower}@consip.it (in z7 con psw condivisa)",
+        f"Estrarre il PST (O365 eDiscovery) da archiviare in \\nasconsip2....\backuppst\03 - backup email cancellate\{sam_lower}@consip.it (in z7 con psw condivisa)",
         "Rimuovere le appartenenze dall’utenza Azure",
         "Rimuovere le applicazioni dall’utenza Azure"
     ]
