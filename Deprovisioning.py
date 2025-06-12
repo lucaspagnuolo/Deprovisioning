@@ -34,6 +34,24 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
 # Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
+
+    # Generazione titolo
+    clean = sam_lower.replace(".ext", "")
+    if sam_lower.endswith(".ext"):
+        parts = clean.split('.', 1)
+        if len(parts) == 2:
+            nome, cognome = parts
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()} (esterno)"
+        else:
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean} (esterno)"
+    else:
+        parts = clean.split('.', 1)
+        if len(parts) == 2:
+            nome, cognome = parts
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()}"
+        else:
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean}"
+
     dl_list = []
     if not dl_df.empty and dl_df.shape[1] > 5:
         mask = dl_df.iloc[:, 1].astype(str).str.lower() == sam_lower
@@ -48,7 +66,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         mask = mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower
         grp = mg_df.loc[mask, mg_df.columns[0]].dropna().tolist()
 
-    lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
+    lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
     fixed = [
