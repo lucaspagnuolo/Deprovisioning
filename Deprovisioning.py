@@ -66,7 +66,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         mask = mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower
         grp = mg_df.loc[mask, mg_df.columns[0]].dropna().tolist()
 
-    lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
+    lines = [f"**{title}**", f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
     fixed = [
