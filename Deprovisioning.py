@@ -194,7 +194,7 @@ def main():
 
         # Step 2: testo di deprovisioning
         steps = genera_deprovisioning(sam, dl_df, sm_df, mg_df)
-        st.markdown("\n".join(steps))
+        st.text("\n".join(steps))
 
 
 if __name__ == "__main__":
