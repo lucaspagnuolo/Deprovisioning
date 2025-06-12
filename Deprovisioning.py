@@ -41,16 +41,16 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         parts = clean.split('.', 1)
         if len(parts) == 2:
             nome, cognome = parts
-            title = f"**[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()} (esterno)**"
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()} (esterno)"
         else:
-            title = f"**[Consip – SR] Casella di posta - Deprovisioning - {clean} (esterno)**"
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean} (esterno)"
     else:
         parts = clean.split('.', 1)
         if len(parts) == 2:
             nome, cognome = parts
-            title = f"**[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()}**"
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()}"
         else:
-            title = f"**[Consip – SR] Casella di posta - Deprovisioning - {clean}**"
+            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean}"
 
     dl_list = []
     if not dl_df.empty and dl_df.shape[1] > 5:
@@ -68,7 +68,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     # Inserimento del titolo in grassetto
     st.subheader(title)
-    lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
+    lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
     fixed = [
