@@ -27,20 +27,11 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
 # Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
-    
-    # Generazione del titolo condizionale
-    if '.ext' in sam:
-        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.replace('.ext', '').split('.').capitalize()} {sam.replace('.ext', '').split('.').capitalize()} (esterno)"
-    elif '.' in sam:
-        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.split('.').capitalize()} {sam.split('.').capitalize()}"
-    else:
-        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.capitalize()}"
-    
     dl_list = dl_df.loc[dl_df.iloc[:, 1].astype(str).str.lower() == sam_lower, dl_df.columns].dropna().tolist() if not dl_df.empty and dl_df.shape > 5 else []
     sm_list = sm_df.loc[sm_df.iloc[:, 2].astype(str).str.lower() == f"{sam_lower}@consip.it", sm_df.columns].dropna().tolist() if not sm_df.empty and sm_df.shape > 2 else []
     grp = mg_df.loc[mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower, mg_df.columns].dropna().tolist() if not mg_df.empty and mg_df.shape > 3 else []
 
-    lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
+    lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
     fixed_steps = [
