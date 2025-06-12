@@ -70,7 +70,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     st.subheader(title)
     lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
-    step = 2
+    step = 1
     fixed = [
         "Disabilitare invio ad utente (Message Delivery Restrictions)",
         "Impostare Hide dalla Rubrica",
