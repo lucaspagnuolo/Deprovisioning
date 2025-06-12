@@ -27,29 +27,20 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
 # Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
-
-    # Titolo email/avviso
-    # Gestione esterno e nome-cognome
-    is_external = sam_lower.endswith('.ext')
-    base_name = sam_lower[:-4] if is_external else sam_lower
-    if '.' in base_name:
-        nome, cognome = base_name.split('.', 1)
-        nome_display = nome.capitalize()
-        cognome_display = cognome.capitalize()
-        title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome_display} {nome_display}"
+    
+    # Generazione del titolo condizionale
+    if '.ext' in sam:
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.replace('.ext', '').split('.').capitalize()} {sam.replace('.ext', '').split('.').capitalize()} (esterno)"
+    elif '.' in sam:
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.split('.').capitalize()} {sam.split('.').capitalize()}"
     else:
-        title = f"[Consip – SR] Casella di posta - Deprovisioning - {base_name}"
-    if is_external:
-        title += " (esterno)"
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {sam.capitalize()}"
+    
+    dl_list = dl_df.loc[dl_df.iloc[:, 1].astype(str).str.lower() == sam_lower, dl_df.columns].dropna().tolist() if not dl_df.empty and dl_df.shape > 5 else []
+    sm_list = sm_df.loc[sm_df.iloc[:, 2].astype(str).str.lower() == f"{sam_lower}@consip.it", sm_df.columns].dropna().tolist() if not sm_df.empty and sm_df.shape > 2 else []
+    grp = mg_df.loc[mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower, mg_df.columns].dropna().tolist() if not mg_df.empty and mg_df.shape > 3 else []
 
-    # Inizio generazione linee
-    lines = [title, f"", f"Ciao,", f"per {sam_lower}@consip.it :"]
-
-    # Raccolta DL, SM e gruppi
-    dl_list = dl_df.loc[dl_df.iloc[:, 1].astype(str).str.lower() == sam_lower, dl_df.columns].dropna().tolist() if not dl_df.empty and dl_df.shape[1] > 1 else []
-    sm_list = sm_df.loc[sm_df.iloc[:, 2].astype(str).str.lower() == f"{sam_lower}@consip.it", sm_df.columns].dropna().tolist() if not sm_df.empty and sm_df.shape[1] > 2 else []
-    grp = mg_df.loc[mg_df.iloc[:, 3].astype(str).str.lower() == sam_lower, mg_df.columns].dropna().tolist() if not mg_df.empty and mg_df.shape[1] > 3 else []
-
+    lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
     fixed_steps = [
@@ -60,10 +51,11 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         "Rimuovere le appartenenze dall’utenza Azure",
         "Rimuovere le applicazioni dall’utenza Azure"
     ]
+    
     for desc in fixed_steps:
         lines.append(f"{step}. {desc}")
         step += 1
-
+    
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         lines.extend([f"   - {dl}" for dl in dl_list])
@@ -83,11 +75,13 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.extend(["   - O365 Copilot Plus", "   - O365 Teams Premium"])
+    
     utenti_groups = [g for g in grp if g.lower().startswith("o365 utenti")]
     if utenti_groups:
         lines.extend([f"   - {g}" for g in utenti_groups])
     else:
         warnings.append("⚠️ Non è stato trovato nessun gruppo O365 Utenti per l'utente")
+    
     step += 1
 
     final_steps = [
@@ -96,14 +90,15 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         "Cancellare la foto da Azure (se applicabile)",
         "Rimozione Wi-Fi"
     ]
+    
     for desc in final_steps:
         lines.append(f"{step}. {desc}")
         step += 1
-
+    
     if warnings:
         lines.append("\n⚠️ Avvisi:")
         lines.extend(warnings)
-
+    
     return lines
 
 # Streamlit UI
