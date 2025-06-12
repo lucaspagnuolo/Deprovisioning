@@ -67,6 +67,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         grp = mg_df.loc[mask, mg_df.columns[0]].dropna().tolist()
 
     # Inserimento del titolo in grassetto
+    st.subheader(title)
     lines = [title, f"Ciao,\nper {sam_lower}@consip.it :"]
     warnings = []
     step = 2
