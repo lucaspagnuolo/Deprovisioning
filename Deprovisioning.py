@@ -21,7 +21,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     base_groups = []
     for g in all_groups:
         gl = g.lower()
-        if gl.startswith("o365 utenti") or gl in exclude:
+        if gl in exclude:
             continue
         base_groups.append(g)
     if not base_groups:
