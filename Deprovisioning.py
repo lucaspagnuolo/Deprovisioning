@@ -11,7 +11,7 @@ HEADER_MODIFICA = [
     "disable", "moveToOU", "telephoneNumber", "company"
 ]
 
-# Funzione per comporre la stringa di rimozione gruppi
+# Funzione per comporre la stringa di rimozione gruppi (esclude O365 Utenti per CSV)
 def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     if mg_df.empty or "Member Name" not in mg_df.columns or "Group Name" not in mg_df.columns:
         return ""
@@ -21,7 +21,8 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     base_groups = []
     for g in all_groups:
         gl = g.lower()
-        if gl in exclude:
+        # Escludiamo anche i gruppi O365 Utenti per il CSV (saranno gestiti nel template)
+        if gl.startswith("o365 utenti") or gl in exclude:
             continue
         base_groups.append(g)
     if not base_groups:
@@ -104,7 +105,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     lines.append(f"{step}. Rimozione in AD del gruppo")
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
-    utenti_groups = [g for g in grp if g.lower().startswith("o365 utenti")]
+    utenti_groups = [g for g in (mg_df.loc[mg_df['Member Name'].astype(str).str.lower() == sam_lower, 'Group Name'].dropna().tolist()) if g.lower().startswith("o365 utenti")]
     if utenti_groups:
         for g in utenti_groups:
             lines.append(f"   - {g}")
