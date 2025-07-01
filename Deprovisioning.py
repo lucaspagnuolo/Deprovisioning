@@ -69,11 +69,18 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
+    # dentro genera_deprovisioning...
+    user_email = f"{sam_lower}@consip.it"
+    
     # DL
     dl_list = []
-    if not dl_df.empty and "DisplayName" in dl_df.columns and "Distribution Group Primary SMTP address" in dl_df.columns:
-        mask = dl_df["DisplayName"].astype(str).str.lower() == sam_lower
-        dl_list = dl_df.loc[mask, "Distribution Group Primary SMTP address"].dropna().tolist()
+    if not dl_df.empty:
+        # individua la colonna SMTP
+        smtp_cols = [c for c in dl_df.columns if "smtp" in c.lower()]
+        if smtp_cols and "DisplayName" in dl_df.columns:
+            smtp_col = smtp_cols[0]
+            mask = dl_df[smtp_col].astype(str).str.lower() == user_email
+            dl_list = dl_df.loc[mask, "DisplayName"].dropna().tolist()
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         for dl in dl_list:
@@ -81,10 +88,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         step += 1
     else:
         warnings.append("⚠️ Non sono state trovate DL all'utente indicato")
-
-    # Disabilita account Azure
-    lines.append(f"{step}. Disabilitare l’account di Azure")
-    step += 1
 
     # SM
     sm_list = []
