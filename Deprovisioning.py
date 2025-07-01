@@ -69,27 +69,25 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # DL: prova prima match diretto su SMTP, poi ricerca in colonna 'member(s)'
+    # DL: estraggo gli indirizzi SMTP dei gruppi associati all'utente
     dl_list = []
     if not dl_df.empty:
-        # individua colonna SMTP e DisplayName e Members
-        smtp_col   = next((c for c in dl_df.columns if "smtp" in c.lower()), None)
-        name_col   = next((c for c in dl_df.columns if "displayname" in c.lower()), None)
-        members_col= next((c for c in dl_df.columns if "member" in c.lower()), None)
-        # match diretto su SMTP
+        smtp_col = next((c for c in dl_df.columns if "smtp" in c.lower()), None)
+        members_col = next((c for c in dl_df.columns if "member" in c.lower()), None)
         if smtp_col:
+            # match diretto su SMTP (gruppi la cui SMTP è esattamente user_email)
             dl_list = dl_df.loc[
                 dl_df[smtp_col].astype(str).str.lower() == user_email,
-                name_col or smtp_col
+                smtp_col
             ].dropna().tolist()
-        # se nulla trovato, cerca in stringa membri
         if not dl_list and members_col:
+            # se non trovato, cerca user_email dentro la colonna membri
             mask = dl_df[members_col].astype(str).str.lower().str.contains(user_email)
-            dl_list = dl_df.loc[mask, name_col or smtp_col].dropna().tolist()
+            dl_list = dl_df.loc[mask, smtp_col].dropna().tolist()
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
-        for dl in dl_list:
-            lines.append(f"   - {dl}")
+        for smtp in dl_list:
+            lines.append(f"   - {smtp}")
         step += 1
     else:
         warnings.append("⚠️ Non sono state trovate DL all'utente indicato")
