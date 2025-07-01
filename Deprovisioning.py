@@ -23,12 +23,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     mask = mg_df[member_col].astype(str).str.lower() == sam_lower
     all_groups = mg_df.loc[mask, group_col].dropna().tolist()
     exclude = {"o365 copilot plus", "o365 teams premium", "domain users"}
-    base_groups = []
-    for g in all_groups:
-        gl = g.lower()
-        if gl.startswith("o365 utenti") or gl in exclude:
-            continue
-        base_groups.append(g)
+    base_groups = [g for g in all_groups if not (g.lower().startswith("o365 utenti") or g.lower() in exclude)]
     if not base_groups:
         return ""
     joined = ";".join(base_groups)
@@ -69,25 +64,21 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # DL: estraggo gli indirizzi SMTP dei gruppi associati all'utente
+    # DL: estrazione corretta degli SMTP delle Distribution Lists
     dl_list = []
     if not dl_df.empty:
-        smtp_col = next((c for c in dl_df.columns if "smtp" in c.lower()), None)
+        # identifica la colonna SMTP e la colonna membri
+        smtp_col = next((c for c in dl_df.columns if "primary smtp" in c.lower()), None)
         members_col = next((c for c in dl_df.columns if "member" in c.lower()), None)
-        if smtp_col:
-            # match diretto su SMTP (gruppi la cui SMTP è esattamente user_email)
-            dl_list = dl_df.loc[
-                dl_df[smtp_col].astype(str).str.lower() == user_email,
-                smtp_col
-            ].dropna().tolist()
-        if not dl_list and members_col:
-            # se non trovato, cerca user_email dentro la colonna membri
+        if smtp_col and members_col:
+            # trova righe in cui l'utente è membro
             mask = dl_df[members_col].astype(str).str.lower().str.contains(user_email)
-            dl_list = dl_df.loc[mask, smtp_col].dropna().tolist()
+            # estrae gli indirizzi univoci
+            dl_list = dl_df.loc[mask, smtp_col].dropna().unique().tolist()
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
-        for smtp in dl_list:
-            lines.append(f"   - {smtp}")
+        for dl in sorted(dl_list):
+            lines.append(f"   - {dl}")
         step += 1
     else:
         warnings.append("⚠️ Non sono state trovate DL all'utente indicato")
@@ -98,12 +89,15 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     # SM
     sm_list = []
-    if not sm_df.empty and "Member" in sm_df.columns and "EmailAddress" in sm_df.columns:
-        mask = sm_df["Member"].astype(str).str.lower() == user_email
-        sm_list = sm_df.loc[mask, "EmailAddress"].dropna().tolist()
+    if not sm_df.empty:
+        member_col_sm = next((c for c in sm_df.columns if "member" in c.lower()), None)
+        smtp_col_sm = next((c for c in sm_df.columns if "email" in c.lower()), None)
+        if member_col_sm and smtp_col_sm:
+            mask = sm_df[member_col_sm].astype(str).str.lower() == user_email
+            sm_list = sm_df.loc[mask, smtp_col_sm].dropna().unique().tolist()
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
-        for sm in sm_list:
+        for sm in sorted(sm_list):
             lines.append(f"   - {sm}")
         step += 1
     else:
@@ -114,14 +108,12 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
     member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
-    group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
+    group_col  = next((c for c in mg_df.columns if "group" in c.lower()), None)
     utenti_groups = []
     if member_col and group_col and not mg_df.empty:
+        mask = mg_df[member_col].astype(str).str.lower() == sam_lower
         utenti_groups = [
-            g for g in mg_df.loc[
-                    mg_df[member_col].astype(str).str.lower() == sam_lower,
-                    group_col
-                ].dropna().tolist()
+            g for g in mg_df.loc[mask, group_col].dropna().tolist()
             if g.lower().startswith("o365 utenti")
         ]
     if utenti_groups:
