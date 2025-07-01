@@ -16,7 +16,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     if mg_df.empty:
         return ""
     member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
-    group_col  = next((c for c in mg_df.columns if "group" in c.lower()), None)
+    group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
     if not member_col or not group_col:
         return ""
     mask = mg_df[member_col].astype(str).str.lower() == sam_lower
@@ -63,36 +63,19 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # Step 7: Rimozione abilitazione dalle DL (da mg_df + dl_df)
+    # Step 7: estrazione delle DL da dl_df
     dl_list = []
-    if not mg_df.empty:
-        # colonne membership e group name in mg_df
-        member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
-        group_col  = next((c for c in mg_df.columns if "group" in c.lower()), None)
-        # colonne display e smtp in dl_df
+    if not dl_df.empty:
+        # colonna che contiene il DisplayName con user_email
         display_col = next((c for c in dl_df.columns if "display" in c.lower()), None)
-        smtp_col    = next((c for c in dl_df.columns if "smtp" in c.lower()), None)
-        if member_col and group_col and smtp_col:
-            # prendi i nomi dei gruppi a cui appartiene l'utente
-            groups = mg_df.loc[
-                mg_df[member_col].astype(str).str.lower() == sam_lower,
-                group_col
-            ].dropna().unique().tolist()
-            # per ciascun gruppo, trova SMTP in dl_df matching su display_col o group_col
-            for grp in groups:
-                mask = None
-                if display_col:
-                    mask = dl_df[display_col].astype(str).str.lower() == grp.lower()
-                if mask is None or not mask.any():
-                    # fallback: match gruppo su smtp_col direttamente
-                    mask = dl_df[smtp_col].astype(str).str.lower().str.contains(grp.lower())
-                if mask.any():
-                    addr = dl_df.loc[mask, smtp_col].dropna().iloc[0]
-                    dl_list.append(addr)
-    dl_list = sorted(set(dl_list))
+        smtp_col    = next((c for c in dl_df.columns if "primary smtp" in c.lower()), None)
+        if display_col and smtp_col:
+            # filtto rows dove DisplayName == user_email
+            mask = dl_df[display_col].astype(str).str.lower() == user_email
+            dl_list = dl_df.loc[mask, smtp_col].dropna().unique().tolist()
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
-        for dl in dl_list:
+        for dl in sorted(dl_list):
             lines.append(f"   - {dl}")
         step += 1
     else:
