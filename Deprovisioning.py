@@ -13,10 +13,16 @@ HEADER_MODIFICA = [
 
 # Funzione per comporre la stringa di rimozione gruppi (esclude O365 Utenti per CSV)
 def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
-    if mg_df.empty or "Member Name" not in mg_df.columns or "Group Name" not in mg_df.columns:
+    if mg_df.empty:
         return ""
-    mask = mg_df["Member Name"].astype(str).str.lower() == sam_lower
-    all_groups = mg_df.loc[mask, "Group Name"].dropna().tolist()
+    # Rileva dinamicamente nomi colonne
+    member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
+    group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
+    if not member_col or not group_col:
+        return ""
+
+    mask = mg_df[member_col].astype(str).str.lower() == sam_lower
+    all_groups = mg_df.loc[mask, group_col].dropna().tolist()
     exclude = {"o365 copilot plus", "o365 teams premium", "domain users"}
     base_groups = []
     for g in all_groups:
@@ -35,6 +41,7 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
 # Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
+    user_email = f"{sam_lower}@consip.it"
 
     # Generazione titolo
     clean = sam_lower.replace(".ext", "")
@@ -54,14 +61,16 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
             title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean}"
 
     st.subheader(title)
-    lines = [f"Ciao,\nper {sam_lower}@consip.it :"]
+    lines = [f"Ciao,\nper {user_email} :"]
     warnings = []
     step = 1
+
+    # Passi fissi iniziali
     fixed = [
         "Disabilitare invio ad utente (Message Delivery Restrictions)",
         "Impostare Hide dalla Rubrica",
         "Disabilitare accesso Mailbox (Mailbox features – Disable Protocolli/OWA)",
-        f"Estrarre il PST (O365 eDiscovery) da archiviare in \\\\nasconsip2....\\backuppst\\03 - backup email cancellate\\{sam_lower}@consip.it (in z7 con psw condivisa)",
+        f"Estrarre il PST (O365 eDiscovery) da archiviare in \\nasconsip2....\\backuppst\\03 - backup email cancellate\\{user_email} (in z7 con psw condivisa)",
         "Rimuovere le appartenenze dall’utenza Azure",
         "Rimuovere le applicazioni dall’utenza Azure"
     ]
@@ -69,13 +78,10 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # dentro genera_deprovisioning...
-    user_email = f"{sam_lower}@consip.it"
-    
-    # DL
+    # DL: ricerca dinamica della colonna SMTP e filtraggio per email
     dl_list = []
     if not dl_df.empty:
-        # individua la colonna SMTP
+        # trova colonna con "smtp" nel nome
         smtp_cols = [c for c in dl_df.columns if "smtp" in c.lower()]
         if smtp_cols and "DisplayName" in dl_df.columns:
             smtp_col = smtp_cols[0]
@@ -89,12 +95,16 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     else:
         warnings.append("⚠️ Non sono state trovate DL all'utente indicato")
 
+    # Disabilita account Azure
+    lines.append(f"{step}. Disabilitare l’account di Azure")
+    step += 1
+
     # SM
     sm_list = []
-    if not sm_df.empty and "Member" in sm_df.columns and "EmailAddress" in sm_df.columns:
-        target = f"{sam_lower}@consip.it"
-        mask = sm_df["Member"].astype(str).str.lower() == target
-        sm_list = sm_df.loc[mask, "EmailAddress"].dropna().tolist()
+    if not sm_df.empty:
+        if "Member" in sm_df.columns and "EmailAddress" in sm_df.columns:
+            mask = sm_df["Member"].astype(str).str.lower() == user_email
+            sm_list = sm_df.loc[mask, "EmailAddress"].dropna().tolist()
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
         for sm in sm_list:
@@ -104,11 +114,22 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         warnings.append("⚠️ Non sono state trovate SM profilate all'utente indicato")
 
     # MG
-    grp = estrai_rimozione_gruppi(sam_lower, mg_df).split(';') if not mg_df.empty else []
     lines.append(f"{step}. Rimozione in AD del gruppo")
+    # G ruppi standard
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
-    utenti_groups = [g for g in (mg_df.loc[mg_df['Member Name'].astype(str).str.lower() == sam_lower, 'Group Name'].dropna().tolist()) if g.lower().startswith("o365 utenti")]
+    # Gruppi O365 Utenti (dinamico)
+    member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
+    group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
+    utenti_groups = []
+    if member_col and group_col and not mg_df.empty:
+        utenti_groups = [
+            g for g in mg_df.loc[
+                    mg_df[member_col].astype(str).str.lower() == sam_lower,
+                    group_col
+                ].dropna().tolist()
+            if g.lower().startswith("o365 utenti")
+        ]
     if utenti_groups:
         for g in utenti_groups:
             lines.append(f"   - {g}")
@@ -116,6 +137,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         warnings.append("⚠️ Non è stato trovato nessun gruppo O365 Utenti per l'utente")
     step += 1
 
+    # Passi finali
     final = [
         "Disabilitazione utenza di dominio",
         "Spostamento in dismessi/utenti",
@@ -125,6 +147,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     for desc in final:
         lines.append(f"{step}. {desc}")
         step += 1
+
     if warnings:
         lines.append("\n⚠️ Avvisi:")
         lines.extend(warnings)
@@ -138,14 +161,13 @@ def main():
     sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
     st.markdown("---")
 
+    # Genera il nome del CSV
     if sam:
         clean = sam.replace(".ext", "")
         parts = clean.split('.')
         if len(parts) == 2:
             nome, cognome = parts
-            cognome_fmt = cognome.capitalize()
-            iniziale_nome = nome[0].upper() if nome else ''
-            csv_name = f"Deprovisioning_{cognome_fmt}_{iniziale_nome}.csv"
+            csv_name = f"Deprovisioning_{cognome.capitalize()}_{nome[0].upper()}.csv"
         else:
             csv_name = f"Deprovisioning_{clean}.csv"
     else:
@@ -164,6 +186,11 @@ def main():
         dl_df = pd.read_excel(dl_file) if dl_file else pd.DataFrame()
         sm_df = pd.read_excel(sm_file) if sm_file else pd.DataFrame()
         mg_df = pd.read_excel(mg_file) if mg_file else pd.DataFrame()
+
+        # DEBUG: mostra colonne per verifica
+        st.write("Colonne DL file:", dl_df.columns.tolist())
+        st.write("Colonne SM file:", sm_df.columns.tolist())
+        st.write("Colonne MG file:", mg_df.columns.tolist())
 
         # Step 1: genera CSV
         rimozione = estrai_rimozione_gruppi(sam, mg_df)
@@ -194,7 +221,6 @@ def main():
         # Step 2: testo di deprovisioning
         steps = genera_deprovisioning(sam, dl_df, sm_df, mg_df)
         st.text("\n".join(steps))
-
 
 if __name__ == "__main__":
     main()
