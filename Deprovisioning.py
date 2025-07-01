@@ -15,7 +15,6 @@ HEADER_MODIFICA = [
 def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     if mg_df.empty:
         return ""
-    # Rileva dinamicamente nomi colonne
     member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
     group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
     if not member_col or not group_col:
@@ -27,16 +26,13 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     base_groups = []
     for g in all_groups:
         gl = g.lower()
-        # Escludiamo anche i gruppi O365 Utenti per il CSV (saranno gestiti nel template)
         if gl.startswith("o365 utenti") or gl in exclude:
             continue
         base_groups.append(g)
     if not base_groups:
         return ""
     joined = ";".join(base_groups)
-    if any(" " in g for g in base_groups):
-        return f"\"{joined}\""
-    return joined
+    return f"\"{joined}\"" if any(" " in g for g in base_groups) else joined
 
 # Funzione testuale di deprovisioning (Step 2)
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame) -> list:
@@ -45,20 +41,15 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     # Generazione titolo
     clean = sam_lower.replace(".ext", "")
-    if sam_lower.endswith(".ext"):
-        parts = clean.split('.', 1)
-        if len(parts) == 2:
-            nome, cognome = parts
-            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()} (esterno)"
-        else:
-            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean} (esterno)"
+    parts = clean.split('.', 1)
+    if sam_lower.endswith(".ext") and len(parts) == 2:
+        nome, cognome = parts
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()} (esterno)"
+    elif len(parts) == 2:
+        nome, cognome = parts
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()}"
     else:
-        parts = clean.split('.', 1)
-        if len(parts) == 2:
-            nome, cognome = parts
-            title = f"[Consip – SR] Casella di posta - Deprovisioning - {cognome.capitalize()} {nome.capitalize()}"
-        else:
-            title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean}"
+        title = f"[Consip – SR] Casella di posta - Deprovisioning - {clean}"
 
     st.subheader(title)
     lines = [f"Ciao,\nper {user_email} :"]
@@ -78,15 +69,23 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # DL: ricerca dinamica della colonna SMTP e filtraggio per email
+    # DL: prova prima match diretto su SMTP, poi ricerca in colonna 'member(s)'
     dl_list = []
     if not dl_df.empty:
-        # trova colonna con "smtp" nel nome
-        smtp_cols = [c for c in dl_df.columns if "smtp" in c.lower()]
-        if smtp_cols and "DisplayName" in dl_df.columns:
-            smtp_col = smtp_cols[0]
-            mask = dl_df[smtp_col].astype(str).str.lower() == user_email
-            dl_list = dl_df.loc[mask, "DisplayName"].dropna().tolist()
+        # individua colonna SMTP e DisplayName e Members
+        smtp_col   = next((c for c in dl_df.columns if "smtp" in c.lower()), None)
+        name_col   = next((c for c in dl_df.columns if "displayname" in c.lower()), None)
+        members_col= next((c for c in dl_df.columns if "member" in c.lower()), None)
+        # match diretto su SMTP
+        if smtp_col:
+            dl_list = dl_df.loc[
+                dl_df[smtp_col].astype(str).str.lower() == user_email,
+                name_col or smtp_col
+            ].dropna().tolist()
+        # se nulla trovato, cerca in stringa membri
+        if not dl_list and members_col:
+            mask = dl_df[members_col].astype(str).str.lower().str.contains(user_email)
+            dl_list = dl_df.loc[mask, name_col or smtp_col].dropna().tolist()
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         for dl in dl_list:
@@ -101,10 +100,9 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     # SM
     sm_list = []
-    if not sm_df.empty:
-        if "Member" in sm_df.columns and "EmailAddress" in sm_df.columns:
-            mask = sm_df["Member"].astype(str).str.lower() == user_email
-            sm_list = sm_df.loc[mask, "EmailAddress"].dropna().tolist()
+    if not sm_df.empty and "Member" in sm_df.columns and "EmailAddress" in sm_df.columns:
+        mask = sm_df["Member"].astype(str).str.lower() == user_email
+        sm_list = sm_df.loc[mask, "EmailAddress"].dropna().tolist()
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
         for sm in sm_list:
@@ -115,10 +113,8 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
 
     # MG
     lines.append(f"{step}. Rimozione in AD del gruppo")
-    # G ruppi standard
     lines.append("   - O365 Copilot Plus")
     lines.append("   - O365 Teams Premium")
-    # Gruppi O365 Utenti (dinamico)
     member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
     group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
     utenti_groups = []
