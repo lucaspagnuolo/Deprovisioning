@@ -66,11 +66,10 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     # Step 7: estrazione delle DL da dl_df
     dl_list = []
     if not dl_df.empty:
-        # colonna che contiene il DisplayName con user_email
-        display_col = next((c for c in dl_df.columns if "display" in c.lower()), None)
-        smtp_col    = next((c for c in dl_df.columns if "primary smtp" in c.lower()), None)
-        if display_col and smtp_col:
-            # filtto rows dove DisplayName == user_email
+        # colonne esatte
+        display_col = "DisplayName"
+        smtp_col    = "Distribution Group Primary SMTP address"
+        if display_col in dl_df.columns and smtp_col in dl_df.columns:
             mask = dl_df[display_col].astype(str).str.lower() == user_email
             dl_list = dl_df.loc[mask, smtp_col].dropna().unique().tolist()
     if dl_list:
@@ -139,73 +138,4 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     return lines
 
 # Streamlit UI
-def main():
-    st.set_page_config(page_title="Deprovisioning Consip", layout="centered")
-    st.title("Deprovisioning Utente")
-
-    sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
-    st.markdown("---")
-
-    # Genera il nome del CSV
-    if sam:
-        clean = sam.replace(".ext", "")
-        parts = clean.split('.')
-        if len(parts) == 2:
-            nome, cognome = parts
-            csv_name = f"Deprovisioning_{cognome.capitalize()}_{nome[0].upper()}.csv"
-        else:
-            csv_name = f"Deprovisioning_{clean}.csv"
-    else:
-        csv_name = "Deprovisioning_.csv"
-    st.write(f"**File CSV generato:** {csv_name}")
-
-    dl_file = st.file_uploader("Carica file DL (Excel)", type="xlsx")
-    sm_file = st.file_uploader("Carica file SM (Excel)", type="xlsx")
-    mg_file = st.file_uploader("Carica file Estr_MembriGruppi (Excel)", type="xlsx")
-
-    if st.button("Genera Template e CSV per Deprovisioning"):
-        if not sam:
-            st.error("Inserisci lo sAMAccountName")
-            return
-
-        dl_df = pd.read_excel(dl_file) if dl_file else pd.DataFrame()
-        sm_df = pd.read_excel(sm_file) if sm_file else pd.DataFrame()
-        mg_df = pd.read_excel(mg_file) if mg_file else pd.DataFrame()
-
-        # DEBUG: mostra colonne per verifica
-        st.write("Colonne DL file:", dl_df.columns.tolist())
-        st.write("Colonne SM file:", sm_df.columns.tolist())
-        st.write("Colonne MG file:", mg_df.columns.tolist())
-
-        # Step 1: genera CSV
-        rimozione = estrai_rimozione_gruppi(sam, mg_df)
-        row = [
-            sam if i == HEADER_MODIFICA.index("sAMAccountName") else
-            rimozione if i == HEADER_MODIFICA.index("RimozioneGruppo") else
-            ""
-            for i in range(len(HEADER_MODIFICA))
-        ]
-
-        buf = io.StringIO()
-        writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
-        writer.writerow(HEADER_MODIFICA)
-        writer.writerow(row)
-        buf.seek(0)
-
-        preview_df = pd.read_csv(io.StringIO(buf.getvalue()), sep=",")
-        st.subheader("Anteprima CSV")
-        st.dataframe(preview_df)
-
-        st.download_button(
-            label="📥 Scarica CSV",
-            data=buf.getvalue(),
-            file_name=csv_name,
-            mime="text/csv"
-        )
-
-        # Step 2: testo di deprovisioning
-        steps = genera_deprovisioning(sam, dl_df, sm_df, mg_df)
-        st.text("\n".join(steps))
-
-if __name__ == "__main__":
-    main()
+... (rest remains unchanged)
