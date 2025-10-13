@@ -100,11 +100,14 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     # Step: estrazione delle DL da dl_df
     dl_list = []
     if not dl_df.empty:
-        display_col = next((c for c in dl_df.columns if 'display' in c.lower()), None) or next((c for c in dl_df.columns if 'name' in c.lower()), None)
-        smtp_col    = next((c for c in dl_df.columns if 'smtp' in c.lower() or 'email' in c.lower()), None)
-        if display_col and smtp_col:
+        # Usa esplicitamente la colonna "Distribution Group" per i nomi DL
+        group_col = next((c for c in dl_df.columns if 'distribution group' in c.lower()), None)
+        smtp_col  = next((c for c in dl_df.columns if 'smtp' in c.lower() or 'email' in c.lower()), None)
+        
+        if group_col and smtp_col:
             mask = dl_df[smtp_col].astype(str).str.lower() == user_email
-            dl_list = dl_df.loc[mask, display_col].dropna().unique().tolist()
+            dl_list = dl_df.loc[mask, group_col].dropna().unique().tolist()
+
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         for dl in sorted(dl_list):
