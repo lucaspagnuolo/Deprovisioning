@@ -175,8 +175,8 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     subset = {g for g in subset if g.lower() not in exclude_specific}
 
     # Disabilitazione utenza di dominio
-    lines.append(f"{step}. Disabilitazione utenza di dominio")
-    step += 1
+    #lines.append(f"{step}. Disabilitazione utenza di dominio")
+    #step += 1
 
     # Nuovo punto: Rimozione gruppi Azure (se presenti)
     if subset:
