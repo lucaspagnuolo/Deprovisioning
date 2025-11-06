@@ -207,7 +207,7 @@ def genera_device_csv(sam: str, device_df: pd.DataFrame) -> (str, str):
     clean = sam.replace(".ext", "")
     parts = clean.split('.')
     cognome = parts[1].capitalize() if len(parts) >= 2 else clean.capitalize()
-    file_name = f"{today}_Computer_riferimenti_remuve[{cognome}].csv"
+    file_name = f"{today}_Computer_riferimenti_remove[{cognome}].csv"
 
     buf = io.StringIO()
     writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
