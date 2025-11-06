@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import csv
 import io
+from datetime import datetime
 
 # Header CSV per lo Step 1 (Utente)
 HEADER_MODIFICA = [
@@ -35,7 +36,6 @@ def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
         return ""
     joined = ";".join(filtered)
     return f"\"{joined}\"" if any(" " in g for g in filtered) else joined
-
 # Helper: estrai nomi gruppi "generici" da un DataFrame
 def extract_group_names_from_df(df: pd.DataFrame) -> set:
     if df.empty:
@@ -182,18 +182,16 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     return lines
 
 # Funzione per generare CSV Device
-def genera_device_csv(sam: str, device_df: pd.DataFrame) -> str:
-    if device_df.empty:
-        return None
-    if "Enabled" not in device_df.columns:
-        return None
+def genera_device_csv(sam: str, device_df: pd.DataFrame) -> (str, str):
+    if device_df.empty or "Enabled" not in device_df.columns:
+        return None, None
     device_df = device_df[device_df["Enabled"] == True]
     if device_df.empty:
-        return None
+        return None, None
 
     mask = device_df["Description"].astype(str).str.contains(f" - {sam} - ", case=False, na=False)
     if not mask.any():
-        return None
+        return None, None
 
     row_data = device_df.loc[mask].iloc[0]
     computer_name = str(row_data["Name"]).strip()
@@ -202,20 +200,23 @@ def genera_device_csv(sam: str, device_df: pd.DataFrame) -> str:
     remove_upn = "SI" if str(row_data.get("userPrincipalName", "")).strip() else ""
 
     if not any([remove_mail, remove_mobile, remove_upn]):
-        return None
+        return None, None
 
-    row_map = {h: "" for h in HEADER_DEVICE}
-    row_map["Computer"] = computer_name
-    row_map["remove_mail"] = remove_mail
-    row_map["remove_mobile"] = remove_mobile
-    row_map["remove_userprincipalname"] = remove_upn
+    # Nome file: AAAAMMGG_Computer_riferimenti_remuve[Cognome].csv
+    today = datetime.now().strftime("%Y%m%d")
+    clean = sam.replace(".ext", "")
+    parts = clean.split('.')
+    cognome = parts[1].capitalize() if len(parts) >= 2 else clean.capitalize()
+    file_name = f"{today}_Computer_riferimenti_remuve{cognome}.csv"
 
     buf = io.StringIO()
     writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
     writer.writerow(HEADER_DEVICE)
-    writer.writerow([row_map[h] for h in HEADER_DEVICE])
+    writer.writerow([computer_name, "", "", remove_mail, "", remove_mobile, "", remove_upn, "", ""])
+    # Riga EOF
+    writer.writerow(["EOF-riga lasciata appositamente scritta così per verificare che nessun PC sia andato nella OU/dismessi/computer"])
     buf.seek(0)
-    return buf.getvalue()
+    return buf.getvalue(), file_name
 
 # Streamlit UI
 def main():
@@ -282,12 +283,12 @@ def main():
 
         # CSV Device
         if device_file:
-            device_csv = genera_device_csv(sam, device_df)
+            device_csv, device_filename = genera_device_csv(sam, device_df)
             if device_csv:
                 st.subheader("Anteprima CSV Device")
-                preview_device_df = pd.read_csv(io.StringIO(device_csv), sep=",")
+                preview_device_df = pd.read_csv(io.StringIO(device_csv), sep=",", header=None)
                 st.dataframe(preview_device_df)
-                st.download_button(label="📥 Scarica CSV Device", data=device_csv, file_name=f"Device_{sam}.csv", mime="text/csv")
+                st.download_button(label="📥 Scarica CSV Device", data=device_csv, file_name=device_filename, mime="text/csv")
             else:
                 st.warning("Nessun dato valido per generare il CSV Device.")
 
