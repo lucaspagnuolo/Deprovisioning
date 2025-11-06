@@ -285,10 +285,10 @@ def main():
         if device_file:
             device_csv, device_filename = genera_device_csv(sam, device_df)
             if device_csv:
-                st.subheader("Anteprima CSV Device")
+                st.subheader("Anteprima CSV PC")
                 preview_device_df = pd.read_csv(io.StringIO(device_csv), sep=",", header=None)
                 st.dataframe(preview_device_df)
-                st.download_button(label="📥 Scarica CSV Device", data=device_csv, file_name=device_filename, mime="text/csv")
+                st.download_button(label="📥 Scarica CSV PC", data=device_csv, file_name=device_filename, mime="text/csv")
             else:
                 st.warning("Nessun dato valido per generare il CSV Device.")
 
