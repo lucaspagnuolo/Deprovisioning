@@ -3,7 +3,7 @@ import pandas as pd
 import csv
 import io
 
-# Header CSV per lo Step 1
+# Header CSV per lo Step 1 (Utente)
 HEADER_MODIFICA = [
     "sAMAccountName", "Creation", "OU", "Name", "DisplayName", "cn", "GivenName", "Surname",
     "employeeNumber", "employeeID", "department", "Description", "passwordNeverExpired",
@@ -11,39 +11,38 @@ HEADER_MODIFICA = [
     "disable", "moveToOU", "telephoneNumber", "company"
 ]
 
-# Funzione per comporre la stringa di rimozione gruppi per CSV:
-# >>> ORA: include tutti i gruppi trovati in MembriGruppi per l'utente, ESCLUSO solo "Domain Users"
+# Header CSV per Device
+HEADER_DEVICE = [
+    "Computer", "OU", "add_mail", "remove_mail",
+    "add_mobile", "remove_mobile",
+    "add_userprincipalname", "remove_userprincipalname",
+    "disable", "moveToOU"
+]
+
+# Funzione per comporre la stringa di rimozione gruppi per CSV
 def estrai_rimozione_gruppi(sam_lower: str, mg_df: pd.DataFrame) -> str:
     if mg_df.empty:
         return ""
-    # Trova colonne di membership e group
     member_col = next((c for c in mg_df.columns if "member" in c.lower()), None)
     group_col  = next((c for c in mg_df.columns if "group"  in c.lower()), None)
     if not member_col or not group_col:
         return ""
-    # Filtra gruppi dell'utente
     mask = mg_df[member_col].astype(str).str.lower() == sam_lower
     groups_series = mg_df.loc[mask, group_col].dropna().astype(str)
-
-    # Escludi soltanto "Domain Users" (case-insensitive); rimuovi vuoti e deduplica
     filtered = [g for g in groups_series if g.strip() and g.lower() != "domain users"]
     filtered = sorted(set(filtered), key=lambda x: x.lower())
-
     if not filtered:
         return ""
     joined = ";".join(filtered)
-    # Manteniamo la logica di quoting se esistono gruppi con spazi (compatibile con il writer QUOTE_NONE)
     return f"\"{joined}\"" if any(" " in g for g in filtered) else joined
 
-# Helper: estrai nomi gruppi "generici" da un DataFrame (usa colonne probabili)
+# Helper: estrai nomi gruppi "generici" da un DataFrame
 def extract_group_names_from_df(df: pd.DataFrame) -> set:
     if df.empty:
         return set()
     cols = df.columns.tolist()
-    # prefer columns containing 'group' but not 'member'/'email'
     group_cols = [c for c in cols if 'group' in c.lower() and 'member' not in c.lower() and 'email' not in c.lower()]
     if not group_cols:
-        # fallback: 'display' or 'name' escludendo member/email
         group_cols = [c for c in cols if ('display' in c.lower() or 'name' in c.lower()) and 'member' not in c.lower() and 'email' not in c.lower()]
     result = set()
     for c in group_cols:
@@ -66,8 +65,6 @@ def extract_entra_groups_for_user(entra_df: pd.DataFrame, user_email: str) -> se
 def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg_df: pd.DataFrame, entra_df: pd.DataFrame) -> list:
     sam_lower = sam.lower()
     user_email = f"{sam_lower}@consip.it"
-
-    # Generazione titolo
     clean = sam_lower.replace(".ext", "")
     parts = clean.split('.', 1)
     if sam_lower.endswith(".ext") and len(parts) == 2:
@@ -84,7 +81,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     warnings = []
     step = 1
 
-    # Passi fissi iniziali
     fixed = [
         "Disabilitare invio ad utente (Message Delivery Restrictions)",
         "Impostare Hide dalla Rubrica",
@@ -97,17 +93,14 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.append(f"{step}. {desc}")
         step += 1
 
-    # Step: estrazione delle DL da dl_df
+    # DL
     dl_list = []
     if not dl_df.empty:
-        # Usa esplicitamente la colonna "Distribution Group" per i nomi DL
         group_col = next((c for c in dl_df.columns if 'distribution group' in c.lower()), None)
         smtp_col  = next((c for c in dl_df.columns if 'smtp' in c.lower() or 'email' in c.lower()), None)
-        
         if group_col and smtp_col:
             mask = dl_df[smtp_col].astype(str).str.lower() == user_email
             dl_list = dl_df.loc[mask, group_col].dropna().unique().tolist()
-
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         for dl in sorted(dl_list):
@@ -140,7 +133,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
                     mask_any = mask if mask_any is None else (mask_any | mask)
                 if mask_any is not None and mask_any.any():
                     sm_list = sm_df.loc[mask_any, group_cols[0]].dropna().unique().tolist()
-
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
         for sm in sorted(sm_list):
@@ -149,10 +141,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     else:
         warnings.append("⚠️ Non sono state trovate SM profilate all'utente indicato")
 
-    # --- Prepara insiemi per il confronto con Entra ---
     entra_groups = extract_entra_groups_for_user(entra_df, user_email)
-
-    # gruppi presenti nei 3 file (DL, MG, SM) per escluderli dall'Entra
     dl_groups_all = extract_group_names_from_df(dl_df)
     mg_groups_all = set()
     if not mg_df.empty:
@@ -160,8 +149,7 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         if group_col_mg_all:
             mg_groups_all = set(mg_df[group_col_mg_all].dropna().astype(str).tolist())
     sm_groups_all = extract_group_names_from_df(sm_df)
-
-    other_groups_union = set([g for g in dl_groups_all if str(g).strip() != ""]) | set([g for g in mg_groups_all if str(g).strip() != ""]) | set([g for g in sm_groups_all if str(g).strip() != ""])
+    other_groups_union = set(dl_groups_all) | set(mg_groups_all) | set(sm_groups_all)
 
     def normalize_set(s):
         return {str(x).strip() for x in s if str(x).strip() != ""}
@@ -169,16 +157,9 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     other_norm = {g for g in normalize_set(other_groups_union)}
     other_lower = {g.lower() for g in other_norm}
     subset = {g for g in entra_norm if g.lower() not in other_lower}
-
-    # Escludi specifici gruppi da Azure (come prima, solo per il punto "Rimozione gruppi Azure")
     exclude_specific = {"o365 copilot plus", "o365 teams premium"}
     subset = {g for g in subset if g.lower() not in exclude_specific}
 
-    # Disabilitazione utenza di dominio
-    #lines.append(f"{step}. Disabilitazione utenza di dominio")
-    #step += 1
-
-    # Nuovo punto: Rimozione gruppi Azure (se presenti)
     if subset:
         lines.append(f"{step}. Rimozione gruppi Azure:")
         for g in sorted(subset, key=lambda x: x.lower()):
@@ -187,10 +168,6 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
     else:
         warnings.append("⚠️ Nessun gruppo Azure (file Entra) da rimuovere dopo lo scremamento con DL/MG/SM")
 
-    # *** RIMOSSO: "Rimozione in AD del gruppo" + O365 Copilot/Teams Premium + O365 Utenti ***
-    # *** RIMOSSO: "Spostamento in dismessi/utenti" ***
-
-    # Altri passi finali (senza lo spostamento)
     final_rest = [
         "Cancellare la foto da Azure (se applicabile)",
         "Rimozione Wi-Fi"
@@ -204,6 +181,42 @@ def genera_deprovisioning(sam: str, dl_df: pd.DataFrame, sm_df: pd.DataFrame, mg
         lines.extend(warnings)
     return lines
 
+# Funzione per generare CSV Device
+def genera_device_csv(sam: str, device_df: pd.DataFrame) -> str:
+    if device_df.empty:
+        return None
+    if "Enabled" not in device_df.columns:
+        return None
+    device_df = device_df[device_df["Enabled"] == True]
+    if device_df.empty:
+        return None
+
+    mask = device_df["Description"].astype(str).str.contains(f" - {sam} - ", case=False, na=False)
+    if not mask.any():
+        return None
+
+    row_data = device_df.loc[mask].iloc[0]
+    computer_name = str(row_data["Name"]).strip()
+    remove_mail = "SI" if str(row_data.get("Mail", "")).strip() else ""
+    remove_mobile = "SI" if str(row_data.get("Mobile", "")).strip() else ""
+    remove_upn = "SI" if str(row_data.get("userPrincipalName", "")).strip() else ""
+
+    if not any([remove_mail, remove_mobile, remove_upn]):
+        return None
+
+    row_map = {h: "" for h in HEADER_DEVICE}
+    row_map["Computer"] = computer_name
+    row_map["remove_mail"] = remove_mail
+    row_map["remove_mobile"] = remove_mobile
+    row_map["remove_userprincipalname"] = remove_upn
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, quoting=csv.QUOTE_NONE, escapechar='\\')
+    writer.writerow(HEADER_DEVICE)
+    writer.writerow([row_map[h] for h in HEADER_DEVICE])
+    buf.seek(0)
+    return buf.getvalue()
+
 # Streamlit UI
 def main():
     st.set_page_config(page_title="Deprovisioning Consip", layout="centered")
@@ -212,7 +225,6 @@ def main():
     sam = st.text_input("Nome utente (sAMAccountName)", "").strip().lower()
     st.markdown("---")
 
-    # Genera il nome del CSV
     if sam:
         clean = sam.replace(".ext", "")
         parts = clean.split('.')
@@ -228,7 +240,8 @@ def main():
     dl_file = st.file_uploader("Carica file DL (Excel)", type="xlsx")
     sm_file = st.file_uploader("Carica file SM (Excel)", type="xlsx")
     mg_file = st.file_uploader("Carica file Estr_MembriGruppi (Excel)", type="xlsx")
-    entra_file = st.file_uploader("Carica file Entra (Excel) - colonne: GroupName | MemberName | MemberEmail", type="xlsx")
+    entra_file = st.file_uploader("Carica file Entra (Excel)", type="xlsx")
+    device_file = st.file_uploader("Carica file Estr_Device (Excel)", type="xlsx")
 
     if st.button("Genera Template e CSV per Deprovisioning"):
         if not sam:
@@ -239,23 +252,21 @@ def main():
         sm_df = pd.read_excel(sm_file) if sm_file else pd.DataFrame()
         mg_df = pd.read_excel(mg_file) if mg_file else pd.DataFrame()
         entra_df = pd.read_excel(entra_file) if entra_file else pd.DataFrame()
+        device_df = pd.read_excel(device_file) if device_file else pd.DataFrame()
 
-        # DEBUG: mostra colonne per verifica
         st.write("Colonne DL file:", dl_df.columns.tolist())
         st.write("Colonne SM file:", sm_df.columns.tolist())
         st.write("Colonne MG file:", mg_df.columns.tolist())
         st.write("Colonne Entra file:", entra_df.columns.tolist())
+        st.write("Colonne Device file:", device_df.columns.tolist())
 
-        # Step 1: genera CSV
+        # CSV Utente
         rimozione = estrai_rimozione_gruppi(sam, mg_df)
-
-        # Costruiamo la riga in modo esplicito per chiarezza
         row_map = {h: "" for h in HEADER_MODIFICA}
         row_map["sAMAccountName"] = sam
         row_map["RimozioneGruppo"] = rimozione
         row_map["disable"] = "SI"
         row_map["moveToOU"] = "SI"
-
         row = [row_map.get(h, "") for h in HEADER_MODIFICA]
 
         buf = io.StringIO()
@@ -265,17 +276,22 @@ def main():
         buf.seek(0)
 
         preview_df = pd.read_csv(io.StringIO(buf.getvalue()), sep=",")
-        st.subheader("Anteprima CSV")
+        st.subheader("Anteprima CSV Utente")
         st.dataframe(preview_df)
+        st.download_button(label="📥 Scarica CSV Utente", data=buf.getvalue(), file_name=csv_name, mime="text/csv")
 
-        st.download_button(
-            label="📥 Scarica CSV",
-            data=buf.getvalue(),
-            file_name=csv_name,
-            mime="text/csv"
-        )
+        # CSV Device
+        if device_file:
+            device_csv = genera_device_csv(sam, device_df)
+            if device_csv:
+                st.subheader("Anteprima CSV Device")
+                preview_device_df = pd.read_csv(io.StringIO(device_csv), sep=",")
+                st.dataframe(preview_device_df)
+                st.download_button(label="📥 Scarica CSV Device", data=device_csv, file_name=f"Device_{sam}.csv", mime="text/csv")
+            else:
+                st.warning("Nessun dato valido per generare il CSV Device.")
 
-        # Step 2: testo di deprovisioning (con modifiche richieste)
+        # Testo Deprovisioning
         steps = genera_deprovisioning(sam, dl_df, sm_df, mg_df, entra_df)
         st.text("\n".join(steps))
 
