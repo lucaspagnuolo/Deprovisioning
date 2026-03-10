@@ -66,6 +66,17 @@ def _find_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
     return None
 
 
+def _find_col_preferred(df: pd.DataFrame, preferred: List[str], fallback: List[str]) -> Optional[str]:
+    """Cerca prima nelle 'preferred' (in ordine), se non trova usa una delle fallback."""
+    if df is None or df.empty:
+        return None
+    for cand in preferred:
+        col = _find_col(df, [cand])
+        if col:
+            return col
+    return _find_col(df, fallback)
+
+
 def _get_any(df: pd.DataFrame, candidates: List[str]) -> pd.Series:
     """Ritorna la Series della prima colonna trovata tra i candidates; se non c'è, solleva KeyError."""
     col = _find_col(df, candidates)
@@ -105,7 +116,6 @@ def _read_excel_or_empty(uploaded_file) -> pd.DataFrame:
     try:
         return pd.read_excel(uploaded_file, engine="openpyxl")
     except Exception:
-        # fallback a default (nel caso openpyxl non sia disponibile nell'ambiente)
         try:
             return pd.read_excel(uploaded_file)
         except Exception:
@@ -132,23 +142,45 @@ CAND_MG_GROUP = [
 ]
 
 # Distribution List (DL) file
+# — nome DL preferito = Primary SMTP address (come richiesto)
+CAND_DL_GROUP_ADDR = [
+    "Distribution Group Primary SMTP address",   # preferito
+    "PrimarySmtpAddress", "SMTP", "Email",
+    "GroupName", "DisplayName", "Group", "Gruppo", "NomeGruppo",
+    "Nome", "NomeVisualizzato"
+]
+# — colonna membro con priorità su "Member Alias" (come richiesto)
+CAND_DL_MEMBER = [
+    "Member Alias", "Alias Membro", "MemberAlias",  # richiesto
+    "MemberUserPrincipalName", "UserPrincipalNameMembro",
+    "Member", "Membro",
+    "userPrincipalName", "UPN",
+    "MemberEmail", "EmailMembro", "Email", "E-mail"
+]
+# fallback "generico" per nomi gruppo (riuso funzioni esistenti)
 CAND_DL_GROUP = [
     "Distribution Group", "Gruppo di distribuzione",
     "Group", "Gruppo",
     "GroupName", "NomeGruppo",
     "DisplayName", "Nome", "NomeVisualizzato"
 ]
-CAND_DL_EMAIL = [
-    "SMTP", "PrimarySmtpAddress",
-    "Email", "E-mail", "Mail", "Posta", "Indirizzo email", "Indirizzo SMTP"
-]
 
 # Shared Mailbox / SM file
-CAND_SM_MEMBER_EMAIL = [
+# — membership via colonna member (incluso "Member")
+CAND_SM_MEMBER = [
     "MemberUserPrincipalName", "UserPrincipalNameMembro",
+    "Member", "Membro",
     "userPrincipalName", "UPN",
     "MemberEmail", "EmailMembro", "Member Mail", "Email"
 ]
+# — identificatore casella preferito = EmailAddress (come richiesto)
+CAND_SM_MAILBOX_ADDR = [
+    "EmailAddress",  # preferito
+    "PrimarySmtpAddress", "SMTP", "Email",
+    "DisplayName", "Mailbox", "SharedMailbox",
+    "Cassetta postale", "Casella condivisa"
+]
+# (già presente) gruppo/nome SM fallback generico
 CAND_SM_GROUP_NAME = [
     "Group", "Gruppo",
     "DisplayName", "Nome", "NomeVisualizzato",
@@ -328,14 +360,20 @@ def genera_deprovisioning(
     # --- DL (Distribution Lists): rimozione abilitazione
     dl_list: List[str] = []
     if dl_df is not None and not dl_df.empty:
-        col_group = _find_col(dl_df, CAND_DL_GROUP)
-        col_mail = _find_col(dl_df, CAND_DL_EMAIL)
-        if col_group and col_mail:
-            mask = dl_df[col_mail].astype(str).str.strip().str.lower() == user_email
+        col_group = _find_col_preferred(dl_df, CAND_DL_GROUP_ADDR, CAND_DL_GROUP)  # nome DL = Primary SMTP address
+        col_member = _find_col(dl_df, CAND_DL_MEMBER)  # membership via "Member Alias" o equivalenti
+        if col_group and col_member:
+            mvals = dl_df[col_member].astype(str).str.strip().str.lower()
+            candidates = {user_email, sam_lower}
+            mask = mvals.isin(candidates)
+            if not mask.any():
+                # gestisce membri multipli in cella (separati da ; , o spazi)
+                pattern = rf"(?:^|[;,\s])({re.escape(user_email)}|{re.escape(sam_lower)})(?:$|[;,\s])"
+                mask = dl_df[col_member].astype(str).str.lower().str.contains(pattern, na=False)
             if mask.any():
                 dl_list = _clean_series_to_list(dl_df.loc[mask, col_group])
         else:
-            warnings.append("Nel file DL non ho trovato colonne di 'Gruppo' o 'Email/SMTP'.")
+            warnings.append("Nel file DL non ho trovato colonne per 'Member Alias/Member' o 'Distribution Group Primary SMTP address'.")
     if dl_list:
         lines.append(f"{step}. Rimozione abilitazione dalle DL")
         for dl in dl_list:
@@ -351,15 +389,20 @@ def genera_deprovisioning(
     # --- SM (Shared Mailboxes): rimozione abilitazioni
     sm_list: List[str] = []
     if sm_df is not None and not sm_df.empty:
-        col_member_email = _find_col(sm_df, CAND_SM_MEMBER_EMAIL)
-        col_group_name = _find_col(sm_df, CAND_SM_GROUP_NAME)
-        if col_member_email and col_group_name:
-            mvals = sm_df[col_member_email].astype(str).str.strip().str.lower()
-            mask_any = mvals == user_email
+        col_member = _find_col(sm_df, CAND_SM_MEMBER)  # membership via colonna "member"
+        col_mailbox_addr = _find_col_preferred(sm_df, CAND_SM_MAILBOX_ADDR, CAND_SM_GROUP_NAME)  # nome SM = EmailAddress
+        if col_member and col_mailbox_addr:
+            mvals = sm_df[col_member].astype(str).str.strip().str.lower()
+            candidates = {user_email, sam_lower}
+            mask_any = mvals.isin(candidates)
+            if not mask_any.any():
+                # gestione membri multipli in cella (separati da ; , o spazi)
+                pattern = rf"(?:^|[;,\s])({re.escape(user_email)}|{re.escape(sam_lower)})(?:$|[;,\s])"
+                mask_any = sm_df[col_member].astype(str).str.lower().str.contains(pattern, na=False)
             if mask_any.any():
-                sm_list = _clean_series_to_list(sm_df.loc[mask_any, col_group_name])
+                sm_list = _clean_series_to_list(sm_df.loc[mask_any, col_mailbox_addr])
         else:
-            warnings.append("Nel file SM non ho trovato colonne di 'Member UPN/Email' o 'Nome mailbox/gruppo'.")
+            warnings.append("Nel file SM non ho trovato colonne per 'Member' o 'EmailAddress/SMTP'.")
     if sm_list:
         lines.append(f"{step}. Rimozione abilitazione da SM")
         for sm in sm_list:
@@ -535,6 +578,14 @@ def main():
         st.write("Colonne MG file:", mg_df.columns.tolist() if not mg_df.empty else "—")
         st.write("Colonne Entra file:", entra_df.columns.tolist() if not entra_df.empty else "—")
         st.write("Colonne Device file:", device_df.columns.tolist() if not device_df.empty else "—")
+
+        # Log rapido delle colonne effettivamente trovate (diagnostica)
+        st.write({
+            "DL_group_col": _find_col_preferred(dl_df, CAND_DL_GROUP_ADDR, CAND_DL_GROUP) if not dl_df.empty else None,
+            "DL_member_col": _find_col(dl_df, CAND_DL_MEMBER) if not dl_df.empty else None,
+            "SM_member_col": _find_col(sm_df, CAND_SM_MEMBER) if not sm_df.empty else None,
+            "SM_mailbox_col": _find_col_preferred(sm_df, CAND_SM_MAILBOX_ADDR, CAND_SM_GROUP_NAME) if not sm_df.empty else None,
+        })
 
         # CSV Utente (Step 1)
         rimozione = estrai_rimozione_gruppi(sam, mg_df)
